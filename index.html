@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>قرْيَةُ اللُّغَة — Desa Bahasa Arab</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; touch-action:none; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#87ceeb;
+    font-family: system-ui, sans-serif; }
+  #ui { position:fixed; top:10px; right:10px; z-index:10; text-align:right; }
+  .badge { background:rgba(255,255,255,.9); border-radius:12px; padding:6px 12px;
+    margin-bottom:6px; font-size:14px; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+  #vocabBtn { cursor:pointer; }
+  /* joystick */
+  #joy { position:fixed; left:24px; bottom:24px; width:120px; height:120px;
+    border-radius:50%; background:rgba(255,255,255,.35); z-index:10;
+    border:2px solid rgba(255,255,255,.6); }
+  #joyKnob { position:absolute; left:38px; top:38px; width:44px; height:44px;
+    border-radius:50%; background:rgba(255,255,255,.85); box-shadow:0 2px 6px rgba(0,0,0,.3); }
+  /* hint */
+  #hint { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.6); color:#fff; padding:8px 16px; border-radius:20px;
+    font-size:15px; z-index:10; pointer-events:none; transition:opacity .3s; opacity:0; }
+  /* quiz card */
+  #quiz { position:fixed; inset:0; background:rgba(30,60,90,.6); z-index:20;
+    display:none; align-items:center; justify-content:center; }
+  #quizCard { background:#fff9ec; border-radius:20px; padding:24px; width:min(92vw,420px);
+    text-align:center; box-shadow:0 10px 30px rgba(0,0,0,.35); }
+  #qWord { font-size:44px; font-family:serif; color:#14532d; margin:8px 0 4px; }
+  #qSound { border:none; background:#22c55e; color:#fff; font-size:16px;
+    padding:8px 18px; border-radius:14px; margin:6px 0 14px; cursor:pointer; }
+  .opt { display:block; width:100%; margin:8px 0; padding:12px; font-size:18px;
+    border:2px solid #e7dcc0; background:#fff; border-radius:12px; cursor:pointer; }
+  .opt:active { background:#d9f2d9; }
+  .opt.right { background:#86efac; } .opt.wrong { background:#fecaca; }
+  #qFeedback { min-height:24px; font-size:17px; margin-top:6px; }
+  #qClose { margin-top:10px; background:#64748b; color:#fff; border:none;
+    padding:10px 20px; border-radius:12px; font-size:16px; cursor:pointer; }
+  /* vocab list */
+  #vocab { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:30;
+    display:none; align-items:center; justify-content:center; }
+  #vocabCard { background:#fff; border-radius:16px; padding:20px; width:min(90vw,380px);
+    max-height:70vh; overflow-y:auto; }
+  #vocabCard h3 { margin-bottom:10px; }
+  .vrow { display:flex; justify-content:space-between; font-size:18px; padding:6px 0;
+    border-bottom:1px solid #eee; }
+  .vrow .ar { font-family:serif; font-size:22px; color:#14532d; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="badge">⭐ <span id="score">0</span></div>
+  <div class="badge" id="vocabBtn">📖 Kosakata <span id="vocabCount">(0)</span></div>
+</div>
+<div id="joy"><div id="joyKnob"></div></div>
+<div id="hint"></div>
+
+<div id="quiz"><div id="quizCard">
+  <div style="font-size:20px;color:#6b7280">ما هذا؟ <span style="font-size:14px">(Apa ini?)</span></div>
+  <div id="qWord"></div>
+  <button id="qSound">🔊 Dengarkan</button>
+  <div id="qOpts"></div>
+  <div id="qFeedback"></div>
+  <button id="qClose">Tutup</button>
+</div></div>
+
+<div id="vocab"><div id="vocabCard">
+  <h3>📖 Buku Kosakata</h3>
+  <div id="vocabList"></div>
+  <button id="vocabClose" style="margin-top:12px;background:#64748b;color:#fff;border:none;padding:10px 18px;border-radius:12px;cursor:pointer">Tutup</button>
+</div></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- Kosakata (dari buku Al-Mumtaz Kitab 1) ----------
+// lokasi: house (البَيْت), garden (الفَوَاكِه), market (الطَّعَام والمَشْرُوبَات)
+const WORDS = [
+  { ar:'بَيْت',   id:'Rumah',   loc:'house',  color:0xe8b04b },
+  { ar:'سَرِيْر', id:'Tempat tidur', loc:'house', color:0x8b5cf6 },
+  { ar:'مَطْبَخ', id:'Dapur',   loc:'house',  color:0x334155 },
+  { ar:'أَب',    id:'Ayah',    loc:'house',  color:0x2563eb },
+  { ar:'أُمّ',    id:'Ibu',     loc:'house',  color:0xdb2777 },
+  { ar:'تُفّاحَة', id:'Apel',    loc:'garden', color:0xef4444 },
+  { ar:'مَوْزَة',  id:'Pisang',  loc:'garden', color:0xfacc15 },
+  { ar:'بُرْتُقَالَة',id:'Jeruk', loc:'garden', color:0xf97316 },
+  { ar:'شَجَرَة',  id:'Pohon',   loc:'garden', color:0x16a34a },
+  { ar:'خُبْز',   id:'Roti',    loc:'market', color:0xd97706 },
+  { ar:'أَرُزّ',   id:'Beras',   loc:'market', color:0xf5f5f4 },
+  { ar:'حَلِيْب',  id:'Susu',    loc:'market', color:0xfaFAfa },
+  { ar:'مَاء',    id:'Air',     loc:'market', color:0x38bdf8 },
+  { ar:'شَاي',    id:'Teh',     loc:'market', color:0x92400e },
+];
+
+// ---------- Scene ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 30, 90);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, .1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a55, 1.1));
+const sun = new THREE.DirectionalLight(0xfff2cc, 1.2);
+sun.position.set(15, 25, 10);
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 48).rotateX(-Math.PI/2),
+  new THREE.MeshLambertMaterial({ color:0x7ec850 }));
+scene.add(ground);
+
+// jalan setapak ke 3 lokasi
+const mat = (c)=> new THREE.MeshLambertMaterial({ color:c });
+for (const a of [70, 190, 310]) {
+  const r = 14;
+  const path = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.2, r).rotateX(-Math.PI/2),
+    mat(0xc4a25e));
+  path.position.set(Math.sin(a*Math.PI/180)*r/2, 0.02, Math.cos(a*Math.PI/180)*r/2);
+  path.rotation.y = a*Math.PI/180;
+  scene.add(path);
+}
+
+// ---------- Lokasi & benda kosakata ----------
+const interactables = []; // {mesh, data:{ar, id, sound}}
+function addObject(word, x, z, shape) {
+  const g = shape === 'sphere' ? new THREE.SphereGeometry(.55, 16, 12)
+          : new THREE.BoxGeometry(1, 1, 1);
+  const m = new THREE.Mesh(g, mat(word.color));
+  m.position.set(x, .6, z);
+  m.userData = { ar:word.ar, id:word.id, learned:false };
+  scene.add(m);
+  interactables.push(m);
+  return m;
+}
+
+// -- Rumah (البَيْت) di 0°, belakang
+const house = new THREE.Group();
+house.add(new THREE.Mesh(new THREE.BoxGeometry(4, 2.6, 3), mat(0xf3e2c0)));
+const roof = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.8, 4), mat(0xb14a3a));
+roof.position.y = 2.2; roof.rotation.y = Math.PI/4;
+house.add(roof);
+const door = new THREE.Mesh(new THREE.BoxGeometry(.9, 1.5, .1), mat(0x8a5a2b));
+door.position.set(0, .75, 1.52); house.add(door);
+house.position.set(0, 1.3, -14); scene.add(house);
+// benda rumah didalam terlihat dari luar (untuk MVP: benda di sekitar teras)
+addObject(WORDS[0],  2.6, -11.5, 'box');
+addObject(WORDS[1], -2.8, -11.2, 'box');
+addObject(WORDS[2],  4.4, -13.0, 'box');
+addObject(WORDS[3], -4.6, -12.6, 'box');
+addObject(WORDS[4],  0.0, -10.4, 'box');
+
+// -- Kebun (الفَوَاكِه) 90° kanan
+const gardenPx = [[10,-11.5],[14,-8],[17,-12],[13,-15]];
+gardenPx.forEach((p,i)=>{
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.25,.35,2.4), mat(0x7a4a21));
+  trunk.position.set(p[0],1.2,p[1]); scene.add(trunk);
+  const crown = new THREE.Mesh(new THREE.SphereGeometry(1.6,16,12), mat(0x2f9e44));
+  crown.position.set(p[0],3,p[1]); scene.add(crown);
+  if (i<3) addObject(WORDS[5+i], p[0], p[1]+1.8, 'sphere');
+});
+addObject(WORDS[8], 13, -15+1.9, 'sphere');
+
+// -- Pasar (الطَّعام والمشروبات) 270° kiri
+const stallBase = new THREE.Mesh(new THREE.BoxGeometry(5,2.2,.6), mat(0xd6a961));
+stallBase.position.set(-13, 1.1, -1);
+stallBase.rotation.y = Math.PI/2; scene.add(stallBase);
+const canopy = new THREE.Mesh(new THREE.BoxGeometry(5.4,.2,1.6), mat(0xcb4335));
+canopy.position.set(-13, 2.5, -.4); canopy.rotation.y = Math.PI/2; scene.add(canopy);
+addObject(WORDS[9],  -11.8, -.2, 'box');
+addObject(WORDS[10], -12.9, -.2, 'box');
+addObject(WORDS[11], -14.0, -.2, 'sphere');
+addObject(WORDS[13], -11.8, -2.1, 'box');
+addObject(WORDS[12], -14.1, -2.1, 'sphere');
+
+// dekorasi: pohon-pohon
+for (let i=0;i<14;i++){
+  const ang = Math.random()*Math.PI*2, r = 24+Math.random()*22;
+  const t = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.3,.4,3), mat(0x7a4a21));
+  const cr = new THREE.Mesh(new THREE.SphereGeometry(2.2,12,10), mat(0x3a9e46));
+  cr.position.y = 3.4; t.add(trunk, cr);
+  t.position.set(Math.sin(ang)*r, 0, Math.cos(ang)*r);
+  scene.add(t);
+}
+
+// ---------- Pemain ----------
+const player = new THREE.Group();
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(.4, .8, 6, 12), mat(0x2563eb));
+body.position.y = .9; player.add(body);
+const head = new THREE.Mesh(new THREE.SphereGeometry(.34, 16, 12), mat(0xf1c27d));
+head.position.y = 1.85; player.add(head);
+scene.add(player);
+
+// ---------- Kontrol: joystick + keyboard ----------
+const joy = document.getElementById('joy'), knob = document.getElementById('joyKnob');
+let joyVec = {x:0, y:0};
+function joyMove(e){
+  const t = e.touches ? e.touches[0] : e;
+  const rect = joy.getBoundingClientRect();
+  let dx = t.clientX - (rect.left+60), dy = t.clientY - (rect.top+60);
+  const len = Math.hypot(dx,dy);
+  if (len > 44){ dx = dx/len*44; dy = dy/len*44; }
+  knob.style.left = (38+dx)+'px'; knob.style.top = (38+dy)+'px';
+  joyVec = { x:dx/44, y:dy/44 };
+}
+joy.addEventListener('touchstart', e=>{ e.preventDefault(); joyMove(e); }, {passive:false});
+joy.addEventListener('touchmove',  e=>{ e.preventDefault(); joyMove(e); }, {passive:false});
+joy.addEventListener('touchend',   ()=>{ joyVec={x:0,y:0}; knob.style.left='38px'; knob.style.top='38px'; });
+const keys = {};
+addEventListener('keydown', e=>keys[e.key]=true);
+addEventListener('keyup',   e=>keys[e.key]=false);
+
+// ketuk benda → kuis
+const ray = new THREE.Raycaster();
+renderer.domElement.addEventListener('click', e=>{
+  const nd = new THREE.Vector2(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
+  ray.setFromCamera(nd, camera);
+  const hit = ray.intersectObjects(interactables, false)[0];
+  if (hit && hit.object.position.distanceTo(player.position) < 8) openQuiz(hit.object);
+});
+
+// ---------- Kuis & TTS ----------
+const quiz = document.getElementById('quiz'), qWord = document.getElementById('qWord'),
+      qOpts = document.getElementById('qOpts'), qFeed = document.getElementById('qFeedback');
+let current = null, score = 0, learned = new Set();
+
+function speak(text){
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ar-SA'; u.rate = .8;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch(_) {}
+}
+function showHint(t){
+  const h = document.getElementById('hint');
+  h.textContent = t; h.style.opacity = 1;
+  clearTimeout(h._t); h._t = setTimeout(()=>h.style.opacity=0, 2200);
+}
+
+function openQuiz(mesh){
+  current = mesh;
+  const { ar, id } = mesh.userData;
+  qWord.textContent = ar;
+  qFeed.textContent = ''; qFeed.dataset.state='';
+  // 3 opsi: benar + 2 acak
+  const others = WORDS.filter(w=>w.id!==id).sort(()=>Math.random()-.5).slice(0,2);
+  const opts = [id, ...others.map(w=>w.id)].sort(()=>Math.random()-.5);
+  qOpts.innerHTML = '';
+  for (const o of opts){
+    const b = document.createElement('button');
+    b.className = 'opt'; b.textContent = o;
+    b.onclick = ()=>answer(b, o, id);
+    qOpts.appendChild(b);
+  }
+  quiz.style.display = 'flex';
+  speak(ar);
+  mesh.userData.known = true;
+  // highlight
+  mesh.userData.flash = 0;
+}
+function answer(btn, choice, correct){
+  if (qFeed.dataset.state === 'done') return;
+  qFeed.dataset.state = 'done';
+  const ok = choice === correct;
+  btn.classList.add(ok ? 'right' : 'wrong');
+  if (ok){
+    qFeed.textContent = '✅ أَحْسَنْت! (Hebat!)';
+    score++; learned.add(current.userData.ar);
+    document.getElementById('score').textContent = score;
+    document.getElementById('vocabCount').textContent = `(${learned.size})`;
+    speak('أحسنت');
+    // benda yang sudah dipelajari naik & berputar sebagai tanda koleksi
+    current.userData.collected = true;
+  } else {
+    const right = [...qOpts.children].find(b=>b.textContent===correct);
+    if (right) right.classList.add('right');
+    qFeed.textContent = `❌ غير صحيح — ${correct} (${current.userData.ar})`;
+  }
+}
+document.getElementById('qSound').onclick = ()=> qWord.textContent && speak(current.userData.ar);
+document.getElementById('qClose').onclick = ()=> quiz.style.display='none';
+
+// ---------- Daftar kosakata ----------
+const vocabEl = document.getElementById('vocab');
+document.getElementById('vocabBtn').onclick = ()=>{
+  const list = document.getElementById('vocabList');
+  list.innerHTML = learned.size
+    ? [...learned].map(ar=>{
+        const w = WORDS.find(w=>w.ar===ar);
+        return `<div class="vrow"><span class="ar">${ar}</span><span>${w.id}</span></div>`;
+      }).join('')
+    : '<i>Belum ada kosakata. Ketuk benda di desa!</i>';
+  vocabEl.style.display = 'flex';
+};
+document.getElementById('vocabClose').onclick = ()=> vocabEl.style.display='none';
+
+// ---------- Loop ----------
+const camOffset = new THREE.Vector3(0, 6, 8);
+function loop(){
+  requestAnimationFrame(loop);
+  let mx = joyVec.x, mz = joyVec.y;
+  if (keys['ArrowUp']||keys['w']) mz -= 1;
+  if (keys['ArrowDown']||keys['s']) mz += 1;
+  if (keys['ArrowLeft']||keys['a']) mx -= 1;
+  if (keys['ArrowRight']||keys['d']) mx += 1;
+  const sp = .16;
+  if (mx||mz){
+    const l = Math.hypot(mx,mz); mx/=l; mz/=l;
+    player.position.x += mx*sp; player.position.z += mz*sp;
+    player.rotation.y = Math.atan2(mx, mz);
+    // batas dunia
+    const r = Math.hypot(player.position.x, player.position.z);
+    if (r > 55){ player.position.x *= 55/r; player.position.z *= 55/r; }
+  }
+  // benda yang sudah dikumpulkan melayang
+  for (const m of interactables){
+    if (m.userData.collected){
+      m.rotation.y += .03;
+      m.position.y = .9 + Math.sin(performance.now()/400)*0.15;
+    }
+  }
+  camera.position.lerp(player.position.clone().add(camOffset), .08);
+  camera.lookAt(player.position.x, 1.2, player.position.z);
+  renderer.render(scene, camera);
+}
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+showHint('Ketuk benda berwarna untuk belajar! 🏠🍈🏪');
+setTimeout(()=>document.getElementById('hint').style.opacity=0, 4000);
+loop();
+</script>
+</body>
+</html>
